@@ -57,6 +57,7 @@ const state = {
   dpr: Math.min(2, window.devicePixelRatio || 1),
   audio: null,
   tone: null,
+  toneEnabled: false,
   fft: new Uint8Array(512),
   audioEnergy: 0,
   particles: [],
@@ -436,7 +437,7 @@ function updateToneFromControls() {
   const carrier = clamp(frequency, 20, 2200);
   const filterFreq = clamp(state.material.toneFilter + carrier * 2.1, 180, 12000);
   const decayTime = clamp((1 - dampNorm) * (0.65 + state.material.decay * 0.55), 0.04, 1.2);
-  const audioActive = state.running && tone.enabled;
+  const audioActive = state.running && state.toneEnabled;
   const targetBodyGain = audioActive ? (amplitude / 1.8) * 0.48 : 0;
   const targetOutput = audioActive ? outputVolume : 0;
 
@@ -457,18 +458,23 @@ function updatePlayPauseButton() {
 }
 
 function updateToneButtonIcon() {
-  const audible = state.running && state.tone?.enabled;
-  controls.toneToggle.textContent = audible ? '🔊' : '🔇';
-  const label = state.tone?.enabled ? 'Disable tone' : 'Enable tone';
+  controls.toneToggle.textContent = state.toneEnabled ? '🔊' : '🔇';
+  controls.toneToggle.classList.toggle('is-dimmed', !state.running);
+  const label = state.toneEnabled ? 'Disable tone' : 'Enable tone';
   controls.toneToggle.setAttribute('aria-label', label);
   controls.toneToggle.setAttribute('title', label);
 }
 
 async function toggleTone() {
-  await ensureToneContext();
-  state.tone.enabled = !state.tone.enabled;
+  state.toneEnabled = !state.toneEnabled;
+  if (state.toneEnabled && state.running) {
+    await ensureToneContext();
+  }
+  if (state.tone) {
+    state.tone.enabled = state.toneEnabled;
+  }
   const baseLabel = state.audio?.label || 'manual';
-  const toneLabel = state.tone.enabled ? ' + tone' : '';
+  const toneLabel = state.toneEnabled ? ' + tone' : '';
   controls.audioStatus.textContent = `Audio: ${baseLabel}${toneLabel}`;
   updateToneButtonIcon();
   updateToneFromControls();
@@ -488,6 +494,10 @@ async function syncAudioToRunState() {
       return;
     }
 
+    if (state.toneEnabled && !state.tone) {
+      await ensureToneContext();
+      state.tone.enabled = true;
+    }
     if (state.audio?.context && state.audio.context.state === 'suspended') {
       await state.audio.context.resume();
     }
@@ -777,7 +787,7 @@ function setupAudioGraph(sourceNode, context, label) {
   if (sourceNode.mediaElement) analyser.connect(context.destination);
   state.audio = { context, analyser, sourceNode, label };
   state.fft = new Uint8Array(analyser.frequencyBinCount);
-  const toneLabel = state.tone?.enabled ? ' + tone' : '';
+  const toneLabel = state.toneEnabled ? ' + tone' : '';
   controls.audioStatus.textContent = `Audio: ${label}${toneLabel}`;
   controls.audioMap.checked = true;
 }

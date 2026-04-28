@@ -302,6 +302,11 @@ h2 {
   justify-self: end;
 }
 
+.icon-round.is-dimmed {
+  opacity: 0.45;
+  filter: saturate(0.7);
+}
+
 .sticky-actions {
   position: sticky;
   top: 0;
