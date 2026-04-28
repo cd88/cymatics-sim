@@ -237,13 +237,11 @@ async function toggleRunning() {
 }
 
 function randomPreset() {
-  const presets = [
-    [{ m: 1, n: 2, amp: 0.7 }, { m: 2, n: 3, amp: 0.48 }, { m: 4, n: 4, amp: 0.3 }, { m: 5, n: 7, amp: 0.18 }, { m: 8, n: 3, amp: 0.15 }, { m: 9, n: 9, amp: 0.09 }],
-    [{ m: 2, n: 2, amp: 0.6 }, { m: 3, n: 5, amp: 0.5 }, { m: 5, n: 3, amp: 0.42 }, { m: 8, n: 8, amp: 0.2 }, { m: 10, n: 4, amp: 0.12 }, { m: 4, n: 11, amp: 0.11 }],
-    [{ m: 1, n: 4, amp: 0.72 }, { m: 4, n: 1, amp: 0.72 }, { m: 3, n: 6, amp: 0.22 }, { m: 6, n: 3, amp: 0.22 }, { m: 7, n: 7, amp: 0.12 }, { m: 12, n: 2, amp: 0.08 }],
-    Array.from({ length: 6 }, (_, i) => ({ m: 1 + Math.floor(Math.random() * 10), n: 1 + Math.floor(Math.random() * 10), amp: Math.max(0.07, 0.75 / (i + 1) + Math.random() * 0.14) }))
-  ];
-  state.modes = structuredClone(presets[Math.floor(Math.random() * presets.length)]);
+  state.modes = Array.from({ length: state.modes.length }, () => ({
+    m: 1 + Math.floor(Math.random() * 14),
+    n: 1 + Math.floor(Math.random() * 14),
+    amp: Number((0.07 + Math.random() * 1.13).toFixed(2))
+  }));
   renderModeEditor();
   syncUrlState();
 }
