@@ -54,7 +54,7 @@ export function initUrlState({ controls, state }) {
     { el: controls.showHeat, key: 'showHeat', kind: 'check' },
     { el: controls.showParticles, key: 'showParticles', kind: 'check' },
     { el: controls.particleCount, key: 'particleCount', kind: 'range' },
-    { el: controls.particleDamping, key: 'particleDampingUi', kind: 'range' },
+    { el: controls.particleDamping, key: 'particleDamping', kind: 'range' },
     { el: controls.nodalPull, key: 'nodalPull', kind: 'range' },
     { el: controls.jitter, key: 'jitter', kind: 'range' },
     { el: controls.audioMap, key: 'audioMap', kind: 'check' }
@@ -64,14 +64,7 @@ export function initUrlState({ controls, state }) {
     const params = new URLSearchParams(window.location.search);
 
     tracked.forEach(({ el, key, kind }) => {
-      let raw = params.get(key);
-      if (raw == null && key === 'particleDampingUi') {
-        const legacy = Number(params.get('particleDamping'));
-        if (Number.isFinite(legacy)) {
-          const clampedLegacy = Math.min(0.995, Math.max(0.7, legacy));
-          raw = String((clampedLegacy - 0.7) / (0.995 - 0.7));
-        }
-      }
+      const raw = params.get(key);
       if (raw == null) return;
 
       if (kind === 'check') {
@@ -107,8 +100,6 @@ export function initUrlState({ controls, state }) {
         params.set(key, el.value);
       }
     });
-
-    params.delete('particleDamping');
 
     params.set('modes', encodeModes(state.modes));
 
