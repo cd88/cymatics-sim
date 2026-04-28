@@ -61,10 +61,14 @@ export function createParticleEngine({ controls, state, pctx, particleCanvas, wa
     const threshold = Number(controls.threshold.value);
     const pull = Number(controls.nodalPull.value);
     const pdamp = Number(controls.particleDamping.value);
+    const pdampMin = Number(controls.particleDamping.min);
+    const pdampMax = Number(controls.particleDamping.max);
     const jitter = Number(controls.jitter.value);
     const eps = 1 / Math.max(state.width, state.height);
     const step = Math.min(dt, 0.033) * 52;
     const surfDamping = Number(controls.damping.value) + (1 - state.material.decay) * 0.06;
+    // Invert slider semantics so higher value means stronger damping.
+    const particleRetention = Math.max(0, (pdampMin + pdampMax) - pdamp - surfDamping);
 
     for (const p of state.particles) {
       const z = Math.abs(waveAt(p.x, p.y));
@@ -77,8 +81,8 @@ export function createParticleEngine({ controls, state, pctx, particleCanvas, wa
       p.vy += -zy * pull * step * 0.88;
       p.vx += (Math.random() - 0.5) * jitter * active * 0.0018;
       p.vy += (Math.random() - 0.5) * jitter * active * 0.0018;
-      p.vx *= pdamp - surfDamping;
-      p.vy *= pdamp - surfDamping;
+      p.vx *= particleRetention;
+      p.vy *= particleRetention;
       p.x += p.vx * step;
       p.y += p.vy * step;
 
