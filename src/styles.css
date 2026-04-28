@@ -127,6 +127,25 @@ input[type="range"] {
   gap: 1rem;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.icon-round {
+  width: 2.35rem;
+  height: 2.35rem;
+  min-width: 2.35rem;
+  min-height: 2.35rem;
+  border-radius: 999px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
 h1,
 h2,
 p {
@@ -272,6 +291,17 @@ h2 {
   gap: 12px;
 }
 
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.surface-tone-toggle {
+  justify-self: end;
+}
+
 .sticky-actions {
   position: sticky;
   top: 0;
@@ -279,6 +309,13 @@ h2 {
   background: color-mix(in srgb, var(--panel-solid) 86%, transparent);
   backdrop-filter: blur(18px);
   grid-template-columns: 1fr 1fr 1fr;
+}
+
+#playPause {
+  font-size: 2.25rem;
+  line-height: 1;
+  padding-top: 0.26rem;
+  padding-bottom: 0.26rem;
 }
 
 .range-row {
@@ -309,6 +346,64 @@ output {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+}
+
+.shape-picker {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.shape-chip {
+  border: 1px solid rgb(86 126 130 / 0.5);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 78% 24%, rgb(86 184 189 / 0.18), transparent 52%),
+    radial-gradient(circle at 20% 80%, rgb(116 247 227 / 0.07), transparent 55%),
+    rgb(12 32 36 / 0.78);
+  color: #69aeb3;
+  padding: 0.52rem 0.2rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.shape-chip::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgb(173 224 226 / 0.55) 0.8px, transparent 1px);
+  background-size: 12px 12px;
+  opacity: 0.11;
+  pointer-events: none;
+}
+
+.shape-chip svg {
+  width: 30px;
+  height: 30px;
+  display: block;
+  margin: 0 auto;
+}
+
+.shape-chip svg * {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.shape-chip.is-selected {
+  color: #a8fbff;
+  border-color: rgb(129 242 246 / 0.72);
+  box-shadow: 0 0 0 1px rgb(116 247 227 / 0.18), 0 0 16px rgb(116 247 227 / 0.22);
+  background:
+    radial-gradient(circle at 78% 24%, rgb(108 240 255 / 0.34), transparent 55%),
+    radial-gradient(circle at 20% 80%, rgb(165 255 243 / 0.18), transparent 62%),
+    rgb(16 45 50 / 0.86);
+}
+
+.shape-chip.is-selected::before {
+  opacity: 0.2;
 }
 
 .knob-control {
@@ -409,10 +504,6 @@ output {
   gap: 8px;
 }
 
-.audio-buttons-3 {
-  grid-template-columns: 1fr 1fr 1fr;
-}
-
 .file-button {
   display: inline-flex;
   align-items: center;
@@ -481,10 +572,6 @@ audio {
   .panel {
     max-height: none;
   }
-
-  .audio-buttons-3 {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 640px) {
@@ -504,6 +591,10 @@ audio {
 
   .knob-board {
     grid-template-columns: 1fr;
+  }
+
+  .shape-picker {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .readouts {

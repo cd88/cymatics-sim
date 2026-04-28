@@ -23,7 +23,7 @@ const controls = {
   jitter: document.getElementById('jitter'),
   audioMap: document.getElementById('audioMap'),
   toneToggle: document.getElementById('toneToggle'),
-  overtoneRatio: document.getElementById('overtoneRatio'),
+  shapePicker: document.getElementById('shapePicker'),
   micButton: document.getElementById('micButton'),
   audioFile: document.getElementById('audioFile'),
   audioElement: document.getElementById('audioElement'),
@@ -190,7 +190,8 @@ void main() {
 
   float z = fieldAt(uv, u_time);
   float mag = abs(z);
-  float nodal = 1.0 - smoothstep(u_threshold * (1.25 - u_sharpness), u_threshold * (1.7 + u_sharpness), mag);
+  float sharpBlend = 1.0 - u_sharpness;
+  float nodal = 1.0 - smoothstep(u_threshold * (1.25 - sharpBlend), u_threshold * (1.7 + sharpBlend), mag);
   float contour = 0.5 + 0.5 * sin(z * 42.0);
   float heat = smoothstep(0.0, 1.1, mag);
 
@@ -435,53 +436,72 @@ function updateToneFromControls() {
   const carrier = clamp(frequency, 20, 2200);
   const filterFreq = clamp(state.material.toneFilter + carrier * 2.1, 180, 12000);
   const decayTime = clamp((1 - dampNorm) * (0.65 + state.material.decay * 0.55), 0.04, 1.2);
-  const targetBodyGain = tone.enabled ? (amplitude / 1.8) * 0.48 : 0;
-  const targetOutput = tone.enabled ? outputVolume : 0;
+  const audioActive = state.running && tone.enabled;
+  const targetBodyGain = audioActive ? (amplitude / 1.8) * 0.48 : 0;
+  const targetOutput = audioActive ? outputVolume : 0;
 
-  const ratio = Number(controls.overtoneRatio.value);
   tone.mainOsc.frequency.setTargetAtTime(carrier, now, 0.015);
-  tone.overtoneOsc.frequency.setTargetAtTime(ratio > 0 ? carrier * ratio : carrier, now, 0.02);
-  const overtoneLevel = ratio > 0 ? state.material.harmonic : 0;
-  tone.overtoneGain.gain.setTargetAtTime(overtoneLevel, now, 0.08);
+  tone.overtoneOsc.frequency.setTargetAtTime(carrier * 2, now, 0.02);
+  tone.overtoneGain.gain.setTargetAtTime(state.material.harmonic, now, 0.08);
   tone.filter.frequency.setTargetAtTime(filterFreq, now, 0.07);
   tone.filter.Q.setTargetAtTime(state.material.toneQ, now, 0.08);
   tone.body.gain.setTargetAtTime(targetBodyGain, now, decayTime);
   tone.output.gain.setTargetAtTime(targetOutput, now, 0.06);
 }
 
+function updatePlayPauseButton() {
+  controls.playPause.textContent = state.running ? '⏸' : '▶';
+  const label = state.running ? 'Pause simulation' : 'Play simulation';
+  controls.playPause.setAttribute('aria-label', label);
+  controls.playPause.setAttribute('title', label);
+}
+
+function updateToneButtonIcon() {
+  const audible = state.running && state.tone?.enabled;
+  controls.toneToggle.textContent = audible ? '🔊' : '🔇';
+  const label = state.tone?.enabled ? 'Disable tone' : 'Enable tone';
+  controls.toneToggle.setAttribute('aria-label', label);
+  controls.toneToggle.setAttribute('title', label);
+}
+
 async function toggleTone() {
   await ensureToneContext();
   state.tone.enabled = !state.tone.enabled;
-  controls.toneToggle.textContent = state.tone.enabled ? 'Disable tone' : 'Enable tone';
   const baseLabel = state.audio?.label || 'manual';
   const toneLabel = state.tone.enabled ? ' + tone' : '';
   controls.audioStatus.textContent = `Audio: ${baseLabel}${toneLabel}`;
+  updateToneButtonIcon();
   updateToneFromControls();
 }
 
 async function syncAudioToRunState() {
-  if (!state.running) {
-    state.audioElementWasPlaying = !controls.audioElement.paused;
-    controls.audioElement.pause();
-    if (state.audio?.context && state.audio.context.state !== 'suspended') {
-      await state.audio.context.suspend();
+  try {
+    if (!state.running) {
+      state.audioElementWasPlaying = !controls.audioElement.paused;
+      controls.audioElement.pause();
+      if (state.audio?.context && state.audio.context.state !== 'suspended') {
+        await state.audio.context.suspend();
+      }
+      if (state.tone?.context && state.tone.context.state !== 'suspended') {
+        await state.tone.context.suspend();
+      }
+      return;
     }
-    if (state.tone?.context && state.tone.context.state !== 'suspended') {
-      await state.tone.context.suspend();
-    }
-    return;
-  }
 
-  if (state.audio?.context && state.audio.context.state === 'suspended') {
-    await state.audio.context.resume();
+    if (state.audio?.context && state.audio.context.state === 'suspended') {
+      await state.audio.context.resume();
+    }
+    if (state.tone?.context && state.tone.context.state === 'suspended') {
+      await state.tone.context.resume();
+    }
+    if (state.audioElementWasPlaying && controls.audioElement.src) {
+      controls.audioElement.play().catch(() => {});
+    }
+    state.audioElementWasPlaying = false;
+  } finally {
+    updateToneButtonIcon();
+    updateToneFromControls();
   }
-  if (state.tone?.context && state.tone.context.state === 'suspended') {
-    await state.tone.context.resume();
-  }
-  if (state.audioElementWasPlaying && controls.audioElement.src) {
-    controls.audioElement.play().catch(() => {});
-  }
-  state.audioElementWasPlaying = false;
 }
 
 function waveAt(x, y, t = state.time) {
@@ -721,11 +741,21 @@ function updateOutputs() {
   controls.jitterOut.textContent = Number(controls.jitter.value).toFixed(2);
   controls.outputVolumeOut.textContent = Number(controls.outputVolume.value).toFixed(2);
   controls.shapeReadout.textContent = controls.shape.value;
+  syncShapePicker();
 
   syncKnobFromInput(controls.frequency);
   syncKnobFromInput(controls.amplitude);
   syncKnobFromInput(controls.damping);
   updateToneFromControls();
+}
+
+function syncShapePicker() {
+  if (!controls.shapePicker) return;
+  controls.shapePicker.querySelectorAll('.shape-chip').forEach((button) => {
+    const active = button.dataset.shape === controls.shape.value;
+    button.classList.toggle('is-selected', active);
+    button.setAttribute('aria-checked', active ? 'true' : 'false');
+  });
 }
 
 function randomPreset() {
@@ -810,7 +840,9 @@ function frame(now) {
 
 controls.playPause.addEventListener('click', async () => {
   state.running = !state.running;
-  controls.playPause.textContent = state.running ? 'Pause' : 'Play';
+  updatePlayPauseButton();
+  updateToneButtonIcon();
+  updateToneFromControls();
   await syncAudioToRunState();
 });
 
@@ -818,9 +850,16 @@ controls.resetParticles.addEventListener('click', seedParticles);
 controls.snapPreset.addEventListener('click', randomPreset);
 controls.material.addEventListener('change', () => setMaterial(controls.material.value));
 controls.shape.addEventListener('change', () => { updateOutputs(); seedParticles(); });
+controls.shapePicker.addEventListener('click', (event) => {
+  const button = event.target.closest('.shape-chip[data-shape]');
+  if (!button) return;
+  const value = button.dataset.shape;
+  if (!value || value === controls.shape.value) return;
+  controls.shape.value = value;
+  controls.shape.dispatchEvent(new Event('change', { bubbles: true }));
+});
 controls.particleCount.addEventListener('change', seedParticles);
 controls.toneToggle.addEventListener('click', toggleTone);
-controls.overtoneRatio.addEventListener('change', updateToneFromControls);
 controls.micButton.addEventListener('click', useMicrophone);
 controls.audioFile.addEventListener('change', (event) => useAudioFile(event.target.files?.[0]));
 controls.modeEditor.addEventListener('input', (event) => {
@@ -841,6 +880,8 @@ window.addEventListener('resize', resize);
 renderModeEditor();
 initKnobs();
 setMaterial(controls.material.value);
+updatePlayPauseButton();
+updateToneButtonIcon();
 updateOutputs();
 resize();
 requestAnimationFrame(frame);
