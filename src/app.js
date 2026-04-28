@@ -49,6 +49,7 @@ const controls = {
 
 const state = {
   running: true,
+  audioElementWasPlaying: false,
   time: 0,
   lastNow: performance.now(),
   width: 1,
@@ -458,6 +459,31 @@ async function toggleTone() {
   updateToneFromControls();
 }
 
+async function syncAudioToRunState() {
+  if (!state.running) {
+    state.audioElementWasPlaying = !controls.audioElement.paused;
+    controls.audioElement.pause();
+    if (state.audio?.context && state.audio.context.state !== 'suspended') {
+      await state.audio.context.suspend();
+    }
+    if (state.tone?.context && state.tone.context.state !== 'suspended') {
+      await state.tone.context.suspend();
+    }
+    return;
+  }
+
+  if (state.audio?.context && state.audio.context.state === 'suspended') {
+    await state.audio.context.resume();
+  }
+  if (state.tone?.context && state.tone.context.state === 'suspended') {
+    await state.tone.context.resume();
+  }
+  if (state.audioElementWasPlaying && controls.audioElement.src) {
+    controls.audioElement.play().catch(() => {});
+  }
+  state.audioElementWasPlaying = false;
+}
+
 function waveAt(x, y, t = state.time) {
   let z = 0;
   const frequency = Number(controls.frequency.value);
@@ -491,25 +517,41 @@ function getModeAmplitudes() {
   return amps;
 }
 
+function sdEquilateralTriangleJS(px, py) {
+  // Direct JS port of the shader's sdEquilateralTriangle
+  const k = 1.7320508;
+  let x = Math.abs(px) - 0.82;
+  let y = py + 0.47;
+  if (x + k * y > 0) {
+    const nx = (x - k * y) / 2;
+    const ny = (-k * x - y) / 2;
+    x = nx;
+    y = ny;
+  }
+  x -= Math.max(Math.min(x, 0), -1.64);
+  return -Math.hypot(x, y) * Math.sign(y);
+}
+
 function isInsideShape(x, y) {
   const aspect = state.width / state.height;
   const px = (x * 2 - 1) * aspect;
-  const py = y * 2 - 1;
+  // Match shader p.y orientation (top is +1 in v_uv-derived space).
+  const py = 1 - y * 2;
   const shape = controls.shape.value;
   if (shape === 'circle') return Math.hypot(px, py) < 0.92;
   if (shape === 'square') return Math.max(Math.abs(px), Math.abs(py)) < 0.86;
-  if (shape === 'rounded-square') return Math.max(Math.abs(px), Math.abs(py)) < 0.9 && Math.hypot(Math.max(Math.abs(px) - 0.73, 0), Math.max(Math.abs(py) - 0.73, 0)) < 0.17;
+  if (shape === 'rounded-square') {
+    // Port of sdRoundBox(p, vec2(0.83), 0.17): inside when dist < 0
+    const dx = Math.max(Math.abs(px) - 0.66, 0); // 0.83 - 0.17 = 0.66
+    const dy = Math.max(Math.abs(py) - 0.66, 0);
+    return Math.hypot(dx, dy) < 0.17;
+  }
+  if (shape === 'triangle') return sdEquilateralTriangleJS(px, py) < 0;
   if (shape === 'hex') {
     const qx = Math.abs(px), qy = Math.abs(py);
     return qx * 0.8660254 + qy * 0.5 < 0.83 && qy < 0.86;
   }
-  // Same orientation as shader, loose barycentric test.
-  const ax = 0, ay = -0.82, bx = -0.86, by = 0.62, cx = 0.86, cy = 0.62;
-  const area = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
-  const s = ((ay - cy) * (px - cx) + (cx - ax) * (py - cy)) / area;
-  const tt = ((cy - by) * (px - cx) + (bx - cx) * (py - cy)) / area;
-  const u = 1 - s - tt;
-  return s >= 0 && tt >= 0 && u >= 0;
+  return false;
 }
 
 function randomPointInShape() {
@@ -766,9 +808,10 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-controls.playPause.addEventListener('click', () => {
+controls.playPause.addEventListener('click', async () => {
   state.running = !state.running;
   controls.playPause.textContent = state.running ? 'Pause' : 'Play';
+  await syncAudioToRunState();
 });
 
 controls.resetParticles.addEventListener('click', seedParticles);
