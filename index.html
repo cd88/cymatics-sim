@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cymatics Field Lab</title>
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <section class="stage-wrap" aria-label="Cymatics simulation stage">
+      <div class="stage-toolbar">
+        <div>
+          <h1>Cymatics Field Lab</h1>
+          <p>Standing-wave surface, nodal extraction, and sand-like particles drifting into low-vibration regions.</p>
+        </div>
+        <div class="meter-pill" id="audioStatus">Audio: manual</div>
+      </div>
+
+      <div class="stage" id="stage">
+        <canvas id="fieldCanvas" aria-label="Vibrating cymatic surface"></canvas>
+        <canvas id="particleCanvas" aria-label="Sand particles over nodal lines"></canvas>
+        <div class="crosshair" aria-hidden="true"></div>
+      </div>
+
+      <div class="readouts">
+        <div><span>Mode energy</span><strong id="energyReadout">0.00</strong></div>
+        <div><span>FPS</span><strong id="fpsReadout">0</strong></div>
+        <div><span>Particles</span><strong id="particleReadout">0</strong></div>
+        <div><span>Shape</span><strong id="shapeReadout">circle</strong></div>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Simulation controls">
+      <div class="panel-section sticky-actions">
+        <button id="playPause" class="primary">Pause</button>
+        <button id="resetParticles">Reseed particles</button>
+        <button id="snapPreset">Random mode preset</button>
+      </div>
+
+      <div class="panel-section">
+        <h2>Surface</h2>
+        <label>
+          Plate shape
+          <select id="shape">
+            <option value="circle">circle</option>
+            <option value="square">square</option>
+            <option value="rounded-square">rounded square</option>
+            <option value="triangle">triangle</option>
+            <option value="hex">hex</option>
+          </select>
+        </label>
+        <label>
+          Material
+          <select id="material">
+            <option value="steel">steel / crisp</option>
+            <option value="brass">brass / warm</option>
+            <option value="glass">glass / bright</option>
+            <option value="rubber">rubber / damped</option>
+            <option value="water">water / soft</option>
+          </select>
+        </label>
+        <div class="range-row"><label for="frequency">Frequency</label><output id="frequencyOut">162 Hz</output></div>
+        <input id="frequency" type="range" min="20" max="900" value="162" step="1" />
+        <div class="range-row"><label for="amplitude">Amplitude</label><output id="amplitudeOut">0.72</output></div>
+        <input id="amplitude" type="range" min="0" max="1.8" value="0.72" step="0.01" />
+        <div class="range-row"><label for="damping">Damping</label><output id="dampingOut">0.035</output></div>
+        <input id="damping" type="range" min="0" max="0.18" value="0.035" step="0.001" />
+      </div>
+
+      <div class="panel-section">
+        <h2>Nodal extraction</h2>
+        <label class="check"><input id="showNodal" type="checkbox" checked /> show nodal lines</label>
+        <label class="check"><input id="showHeat" type="checkbox" checked /> show vibration heat</label>
+        <div class="range-row"><label for="threshold">Nodal threshold</label><output id="thresholdOut">0.070</output></div>
+        <input id="threshold" type="range" min="0.01" max="0.22" value="0.070" step="0.001" />
+        <div class="range-row"><label for="sharpness">Line sharpness</label><output id="sharpnessOut">0.62</output></div>
+        <input id="sharpness" type="range" min="0.1" max="1" value="0.62" step="0.01" />
+      </div>
+
+      <div class="panel-section">
+        <h2>Particles</h2>
+        <label class="check"><input id="showParticles" type="checkbox" checked /> show particles</label>
+        <div class="range-row"><label for="particleCount">Count</label><output id="particleCountOut">3600</output></div>
+        <input id="particleCount" type="range" min="300" max="12000" value="3600" step="100" />
+        <div class="range-row"><label for="particleDamping">Particle damping</label><output id="particleDampingOut">0.936</output></div>
+        <input id="particleDamping" type="range" min="0.70" max="0.995" value="0.936" step="0.001" />
+        <div class="range-row"><label for="nodalPull">Nodal pull</label><output id="nodalPullOut">0.68</output></div>
+        <input id="nodalPull" type="range" min="0" max="1.8" value="0.68" step="0.01" />
+        <div class="range-row"><label for="jitter">Micro jitter</label><output id="jitterOut">0.24</output></div>
+        <input id="jitter" type="range" min="0" max="1" value="0.24" step="0.01" />
+      </div>
+
+      <div class="panel-section">
+        <h2>Audio → modes</h2>
+        <p class="hint">Use mic input or drop an audio file. FFT bins modulate mode amplitudes while base frequency stays user-controlled.</p>
+        <label class="check"><input id="audioMap" type="checkbox" /> map FFT bins to modes</label>
+        <div class="audio-buttons">
+          <button id="micButton">Use microphone</button>
+          <label class="file-button">Load audio<input id="audioFile" type="file" accept="audio/*" /></label>
+        </div>
+        <audio id="audioElement" controls></audio>
+        <canvas id="fftCanvas" width="420" height="80" aria-label="Audio FFT display"></canvas>
+      </div>
+
+      <div class="panel-section">
+        <h2>Modes</h2>
+        <p class="hint">Each mode is a standing wave. Higher m/n values create finer nodal structure.</p>
+        <div id="modeEditor" class="mode-editor"></div>
+      </div>
+    </aside>
+  </main>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

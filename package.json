@@ -1,0 +1,9 @@
+{
+  "name": "cymatics-field-lab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dependency-free cymatics standing-wave and particle simulation prototype.",
+  "scripts": {
+    "start": "python3 -m http.server 5173"
+  }
+}
