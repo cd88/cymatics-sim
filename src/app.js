@@ -1,3 +1,5 @@
+import { initUrlState } from './urlState.js';
+
 const fieldCanvas = document.getElementById('fieldCanvas');
 const particleCanvas = document.getElementById('particleCanvas');
 const stage = document.getElementById('stage');
@@ -91,6 +93,7 @@ const materialProfiles = {
 
 const KNOB_ANGLE_MIN = -135;
 const KNOB_ANGLE_MAX = 135;
+let syncUrlState = () => {};
 
 const gl = fieldCanvas.getContext('webgl', { antialias: false, alpha: false, preserveDrawingBuffer: false });
 if (!gl) {
@@ -286,6 +289,52 @@ function setRangeValue(input, nextValue) {
     input.value = value;
     input.dispatchEvent(new Event('input', { bubbles: true }));
   }
+}
+
+function setupInlineOutputEditor(output, input, { suffix = '', decimals = 2 } = {}) {
+  let editing = false;
+  output.classList.add('editable-output');
+
+  const restore = () => {
+    editing = false;
+    updateOutputs();
+  };
+
+  output.addEventListener('click', () => {
+    if (editing) return;
+    editing = true;
+
+    const editor = document.createElement('input');
+    editor.type = 'text';
+    editor.className = 'inline-value-editor';
+    editor.value = Number(input.value).toFixed(decimals);
+
+    output.textContent = '';
+    output.append(editor);
+    if (suffix) {
+      const unit = document.createElement('span');
+      unit.className = 'inline-unit';
+      unit.textContent = ` ${suffix}`;
+      output.append(unit);
+    }
+
+    editor.focus();
+    editor.select();
+
+    editor.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') editor.blur();
+      if (event.key === 'Escape') restore();
+    });
+
+    editor.addEventListener('blur', () => {
+      if (!editing) return;
+      const parsed = Number(editor.value.trim());
+      if (Number.isFinite(parsed)) {
+        setRangeValue(input, parsed);
+      }
+      restore();
+    });
+  });
 }
 
 function inputToAngle(input) {
@@ -759,6 +808,14 @@ function updateOutputs() {
   updateToneFromControls();
 }
 
+async function toggleRunning() {
+  state.running = !state.running;
+  updatePlayPauseButton();
+  updateToneButtonIcon();
+  updateToneFromControls();
+  await syncAudioToRunState();
+}
+
 function syncShapePicker() {
   if (!controls.shapePicker) return;
   controls.shapePicker.querySelectorAll('.shape-chip').forEach((button) => {
@@ -777,6 +834,7 @@ function randomPreset() {
   ];
   state.modes = structuredClone(presets[Math.floor(Math.random() * presets.length)]);
   renderModeEditor();
+  syncUrlState();
 }
 
 function setupAudioGraph(sourceNode, context, label) {
@@ -849,11 +907,7 @@ function frame(now) {
 }
 
 controls.playPause.addEventListener('click', async () => {
-  state.running = !state.running;
-  updatePlayPauseButton();
-  updateToneButtonIcon();
-  updateToneFromControls();
-  await syncAudioToRunState();
+  await toggleRunning();
 });
 
 controls.resetParticles.addEventListener('click', seedParticles);
@@ -879,6 +933,20 @@ controls.modeEditor.addEventListener('input', (event) => {
   if (!Number.isFinite(index) || !field) return;
   const value = field === 'amp' ? Number(el.value) : Math.max(1, Math.min(14, Number(el.value)));
   state.modes[index][field] = value;
+  syncUrlState();
+});
+
+window.addEventListener('keydown', (event) => {
+  if (event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.code === 'Space') {
+    event.preventDefault();
+    void toggleRunning();
+    return;
+  }
+  if (event.key.toLowerCase() === 'm') {
+    event.preventDefault();
+    void toggleTone();
+  }
 });
 
 for (const input of document.querySelectorAll('input, select')) {
@@ -887,8 +955,14 @@ for (const input of document.querySelectorAll('input, select')) {
 
 window.addEventListener('resize', resize);
 
+const { syncToUrl } = initUrlState({ controls, state });
+syncUrlState = syncToUrl;
+
 renderModeEditor();
 initKnobs();
+setupInlineOutputEditor(controls.frequencyOut, controls.frequency, { suffix: 'Hz', decimals: 0 });
+setupInlineOutputEditor(controls.amplitudeOut, controls.amplitude, { decimals: 2 });
+setupInlineOutputEditor(controls.dampingOut, controls.damping, { decimals: 3 });
 setMaterial(controls.material.value);
 updatePlayPauseButton();
 updateToneButtonIcon();

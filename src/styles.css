@@ -337,6 +337,25 @@ output {
   font-variant-numeric: tabular-nums;
 }
 
+.editable-output {
+  cursor: text;
+}
+
+.inline-value-editor {
+  width: 4.8ch;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: rgb(0 0 0 / 0.35);
+  color: var(--text);
+  font: inherit;
+  text-align: right;
+  padding: 0.08rem 0.28rem;
+}
+
+.inline-unit {
+  color: var(--accent);
+}
+
 .range-hidden {
   position: absolute;
   width: 1px;
