@@ -22,9 +22,12 @@ const controls = {
   nodalPull: document.getElementById('nodalPull'),
   jitter: document.getElementById('jitter'),
   audioMap: document.getElementById('audioMap'),
+  toneToggle: document.getElementById('toneToggle'),
+  overtoneRatio: document.getElementById('overtoneRatio'),
   micButton: document.getElementById('micButton'),
   audioFile: document.getElementById('audioFile'),
   audioElement: document.getElementById('audioElement'),
+  outputVolume: document.getElementById('outputVolume'),
   fftCanvas: document.getElementById('fftCanvas'),
   modeEditor: document.getElementById('modeEditor'),
   audioStatus: document.getElementById('audioStatus'),
@@ -40,7 +43,8 @@ const controls = {
   particleCountOut: document.getElementById('particleCountOut'),
   particleDampingOut: document.getElementById('particleDampingOut'),
   nodalPullOut: document.getElementById('nodalPullOut'),
-  jitterOut: document.getElementById('jitterOut')
+  jitterOut: document.getElementById('jitterOut'),
+  outputVolumeOut: document.getElementById('outputVolumeOut')
 };
 
 const state = {
@@ -51,6 +55,7 @@ const state = {
   height: 1,
   dpr: Math.min(2, window.devicePixelRatio || 1),
   audio: null,
+  tone: null,
   fft: new Uint8Array(512),
   audioEnergy: 0,
   particles: [],
@@ -65,6 +70,9 @@ const state = {
   material: {
     decay: 0.82,
     stiffness: 1.2,
+    toneFilter: 5100,
+    toneQ: 2.4,
+    harmonic: 0.2,
     colorA: [0.03, 0.08, 0.13],
     colorB: [0.18, 0.85, 0.78],
     colorC: [0.78, 0.48, 1.0]
@@ -72,12 +80,15 @@ const state = {
 };
 
 const materialProfiles = {
-  steel: { decay: 0.82, stiffness: 1.25, colorA: [0.03, 0.08, 0.13], colorB: [0.18, 0.85, 0.78], colorC: [0.78, 0.48, 1.0] },
-  brass: { decay: 0.74, stiffness: 0.94, colorA: [0.10, 0.065, 0.025], colorB: [1.0, 0.72, 0.32], colorC: [0.55, 0.28, 0.13] },
-  glass: { decay: 0.92, stiffness: 1.55, colorA: [0.02, 0.06, 0.12], colorB: [0.54, 0.88, 1.0], colorC: [0.96, 0.92, 1.0] },
-  rubber: { decay: 0.48, stiffness: 0.62, colorA: [0.035, 0.04, 0.06], colorB: [0.39, 0.54, 0.68], colorC: [0.08, 0.12, 0.18] },
-  water: { decay: 0.66, stiffness: 0.72, colorA: [0.005, 0.03, 0.045], colorB: [0.06, 0.55, 0.8], colorC: [0.63, 0.9, 1.0] }
+  steel: { decay: 0.82, stiffness: 1.25, toneFilter: 6200, toneQ: 3.6, harmonic: 0.35, colorA: [0.03, 0.08, 0.13], colorB: [0.18, 0.85, 0.78], colorC: [0.78, 0.48, 1.0] },
+  brass: { decay: 0.74, stiffness: 0.94, toneFilter: 3500, toneQ: 1.8, harmonic: 0.28, colorA: [0.10, 0.065, 0.025], colorB: [1.0, 0.72, 0.32], colorC: [0.55, 0.28, 0.13] },
+  glass: { decay: 0.92, stiffness: 1.55, toneFilter: 7600, toneQ: 4.2, harmonic: 0.24, colorA: [0.02, 0.06, 0.12], colorB: [0.54, 0.88, 1.0], colorC: [0.96, 0.92, 1.0] },
+  rubber: { decay: 0.48, stiffness: 0.62, toneFilter: 1400, toneQ: 0.8, harmonic: 0.08, colorA: [0.035, 0.04, 0.06], colorB: [0.39, 0.54, 0.68], colorC: [0.08, 0.12, 0.18] },
+  water: { decay: 0.66, stiffness: 0.72, toneFilter: 2200, toneQ: 1.1, harmonic: 0.14, colorA: [0.005, 0.03, 0.045], colorB: [0.06, 0.55, 0.8], colorC: [0.63, 0.9, 1.0] }
 };
+
+const KNOB_ANGLE_MIN = -135;
+const KNOB_ANGLE_MAX = 135;
 
 const gl = fieldCanvas.getContext('webgl', { antialias: false, alpha: false, preserveDrawingBuffer: false });
 if (!gl) {
@@ -243,9 +254,208 @@ gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
 gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
 
 const shapeMap = { circle: 0, square: 1, 'rounded-square': 2, triangle: 3, hex: 4 };
+const knobElements = new Map();
 
 function setMaterial(name) {
   state.material = materialProfiles[name] || materialProfiles.steel;
+  updateToneFromControls();
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function stepPrecision(step) {
+  const str = String(step);
+  const idx = str.indexOf('.');
+  return idx === -1 ? 0 : str.length - idx - 1;
+}
+
+function setRangeValue(input, nextValue) {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const step = Math.max(Number(input.step) || 1, 1e-9);
+  const precision = stepPrecision(step);
+  const snapped = min + Math.round((clamp(nextValue, min, max) - min) / step) * step;
+  const limited = clamp(snapped, min, max);
+  const value = limited.toFixed(precision);
+  if (value !== input.value) {
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
+
+function inputToAngle(input) {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const value = Number(input.value);
+  const norm = (value - min) / Math.max(max - min, 1e-9);
+  return KNOB_ANGLE_MIN + norm * (KNOB_ANGLE_MAX - KNOB_ANGLE_MIN);
+}
+
+function syncKnobFromInput(input) {
+  const knob = knobElements.get(input.id);
+  if (!knob) return;
+  knob.style.setProperty('--knob-angle', `${inputToAngle(input)}deg`);
+  knob.setAttribute('aria-valuenow', input.value);
+}
+
+function bindKnob(knob) {
+  const input = controls[knob.dataset.target];
+  if (!input) return;
+  knobElements.set(input.id, knob);
+  syncKnobFromInput(input);
+
+  let pointerId = null;
+  let lastX = 0;
+  let lastY = 0;
+
+  knob.addEventListener('pointerdown', async (event) => {
+    if (event.button !== 0) return;
+    await ensureToneContext();
+    pointerId = event.pointerId;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    knob.classList.add('dragging');
+    knob.setPointerCapture(pointerId);
+    event.preventDefault();
+  });
+
+  knob.addEventListener('pointermove', (event) => {
+    if (pointerId !== event.pointerId) return;
+    const dx = event.clientX - lastX;
+    const dy = event.clientY - lastY;
+    lastX = event.clientX;
+    lastY = event.clientY;
+
+    const min = Number(input.min);
+    const max = Number(input.max);
+    const sensitivity = (max - min) / 900;
+    const clockwiseDelta = (dx - dy) * sensitivity;
+    setRangeValue(input, Number(input.value) + clockwiseDelta);
+  });
+
+  const endDrag = (event) => {
+    if (pointerId !== event.pointerId) return;
+    knob.classList.remove('dragging');
+    knob.releasePointerCapture(pointerId);
+    pointerId = null;
+  };
+
+  knob.addEventListener('pointerup', endDrag);
+  knob.addEventListener('pointercancel', endDrag);
+
+  knob.addEventListener('wheel', (event) => {
+    const step = Number(input.step) || (Number(input.max) - Number(input.min)) / 100;
+    const mult = event.shiftKey ? 4 : 1;
+    const direction = event.deltaY < 0 ? 1 : -1;
+    setRangeValue(input, Number(input.value) + step * mult * direction);
+    event.preventDefault();
+  }, { passive: false });
+
+  knob.addEventListener('keydown', (event) => {
+    const step = Number(input.step) || (Number(input.max) - Number(input.min)) / 100;
+    const mult = event.shiftKey ? 10 : 1;
+    if (event.key === 'ArrowUp' || event.key === 'ArrowRight') {
+      setRangeValue(input, Number(input.value) + step * mult);
+      event.preventDefault();
+    }
+    if (event.key === 'ArrowDown' || event.key === 'ArrowLeft') {
+      setRangeValue(input, Number(input.value) - step * mult);
+      event.preventDefault();
+    }
+  });
+}
+
+function initKnobs() {
+  document.querySelectorAll('.knob[data-target]').forEach((knob) => bindKnob(knob));
+}
+
+async function ensureToneContext() {
+  if (!state.tone) {
+    const context = new AudioContext();
+    const mainOsc = context.createOscillator();
+    const overtoneOsc = context.createOscillator();
+    const mainGain = context.createGain();
+    const overtoneGain = context.createGain();
+    const filter = context.createBiquadFilter();
+    const body = context.createGain();
+    const output = context.createGain();
+
+    mainOsc.type = 'sine';
+    overtoneOsc.type = 'triangle';
+    mainGain.gain.value = 0.65;
+    overtoneGain.gain.value = 0.18;
+    filter.type = 'lowpass';
+    body.gain.value = 0;
+    output.gain.value = 0;
+
+    mainOsc.connect(mainGain);
+    overtoneOsc.connect(overtoneGain);
+    mainGain.connect(filter);
+    overtoneGain.connect(filter);
+    filter.connect(body);
+    body.connect(output);
+    output.connect(context.destination);
+
+    mainOsc.start();
+    overtoneOsc.start();
+
+    state.tone = {
+      context,
+      enabled: false,
+      mainOsc,
+      overtoneOsc,
+      overtoneGain,
+      filter,
+      body,
+      output
+    };
+  }
+  if (state.tone.context.state === 'suspended') {
+    await state.tone.context.resume();
+  }
+  return state.tone;
+}
+
+function updateToneFromControls() {
+  if (!state.tone) return;
+  const tone = state.tone;
+  const now = tone.context.currentTime;
+  const frequency = Number(controls.frequency.value);
+  const amplitude = Number(controls.amplitude.value);
+  const damping = Number(controls.damping.value);
+  const outputVolume = Number(controls.outputVolume.value);
+
+  const dampMin = Number(controls.damping.min);
+  const dampMax = Number(controls.damping.max);
+  const dampNorm = (damping - dampMin) / Math.max(dampMax - dampMin, 1e-9);
+
+  const carrier = clamp(frequency, 20, 2200);
+  const filterFreq = clamp(state.material.toneFilter + carrier * 2.1, 180, 12000);
+  const decayTime = clamp((1 - dampNorm) * (0.65 + state.material.decay * 0.55), 0.04, 1.2);
+  const targetBodyGain = tone.enabled ? (amplitude / 1.8) * 0.48 : 0;
+  const targetOutput = tone.enabled ? outputVolume : 0;
+
+  const ratio = Number(controls.overtoneRatio.value);
+  tone.mainOsc.frequency.setTargetAtTime(carrier, now, 0.015);
+  tone.overtoneOsc.frequency.setTargetAtTime(ratio > 0 ? carrier * ratio : carrier, now, 0.02);
+  const overtoneLevel = ratio > 0 ? state.material.harmonic : 0;
+  tone.overtoneGain.gain.setTargetAtTime(overtoneLevel, now, 0.08);
+  tone.filter.frequency.setTargetAtTime(filterFreq, now, 0.07);
+  tone.filter.Q.setTargetAtTime(state.material.toneQ, now, 0.08);
+  tone.body.gain.setTargetAtTime(targetBodyGain, now, decayTime);
+  tone.output.gain.setTargetAtTime(targetOutput, now, 0.06);
+}
+
+async function toggleTone() {
+  await ensureToneContext();
+  state.tone.enabled = !state.tone.enabled;
+  controls.toneToggle.textContent = state.tone.enabled ? 'Disable tone' : 'Enable tone';
+  const baseLabel = state.audio?.label || 'manual';
+  const toneLabel = state.tone.enabled ? ' + tone' : '';
+  controls.audioStatus.textContent = `Audio: ${baseLabel}${toneLabel}`;
+  updateToneFromControls();
 }
 
 function waveAt(x, y, t = state.time) {
@@ -467,7 +677,13 @@ function updateOutputs() {
   controls.particleDampingOut.textContent = Number(controls.particleDamping.value).toFixed(3);
   controls.nodalPullOut.textContent = Number(controls.nodalPull.value).toFixed(2);
   controls.jitterOut.textContent = Number(controls.jitter.value).toFixed(2);
+  controls.outputVolumeOut.textContent = Number(controls.outputVolume.value).toFixed(2);
   controls.shapeReadout.textContent = controls.shape.value;
+
+  syncKnobFromInput(controls.frequency);
+  syncKnobFromInput(controls.amplitude);
+  syncKnobFromInput(controls.damping);
+  updateToneFromControls();
 }
 
 function randomPreset() {
@@ -487,9 +703,10 @@ function setupAudioGraph(sourceNode, context, label) {
   analyser.smoothingTimeConstant = 0.78;
   sourceNode.connect(analyser);
   if (sourceNode.mediaElement) analyser.connect(context.destination);
-  state.audio = { context, analyser, sourceNode };
+  state.audio = { context, analyser, sourceNode, label };
   state.fft = new Uint8Array(analyser.frequencyBinCount);
-  controls.audioStatus.textContent = `Audio: ${label}`;
+  const toneLabel = state.tone?.enabled ? ' + tone' : '';
+  controls.audioStatus.textContent = `Audio: ${label}${toneLabel}`;
   controls.audioMap.checked = true;
 }
 
@@ -497,6 +714,7 @@ async function useMicrophone() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     const context = new AudioContext();
+    if (context.state === 'suspended') await context.resume();
     const source = context.createMediaStreamSource(stream);
     setupAudioGraph(source, context, 'microphone');
   } catch (err) {
@@ -511,6 +729,7 @@ function useAudioFile(file) {
   controls.audioElement.src = url;
   controls.audioElement.play().catch(() => {});
   const context = new AudioContext();
+  context.resume().catch(() => {});
   const source = context.createMediaElementSource(controls.audioElement);
   source.mediaElement = controls.audioElement;
   setupAudioGraph(source, context, 'file');
@@ -557,6 +776,8 @@ controls.snapPreset.addEventListener('click', randomPreset);
 controls.material.addEventListener('change', () => setMaterial(controls.material.value));
 controls.shape.addEventListener('change', () => { updateOutputs(); seedParticles(); });
 controls.particleCount.addEventListener('change', seedParticles);
+controls.toneToggle.addEventListener('click', toggleTone);
+controls.overtoneRatio.addEventListener('change', updateToneFromControls);
 controls.micButton.addEventListener('click', useMicrophone);
 controls.audioFile.addEventListener('change', (event) => useAudioFile(event.target.files?.[0]));
 controls.modeEditor.addEventListener('input', (event) => {
@@ -575,6 +796,7 @@ for (const input of document.querySelectorAll('input, select')) {
 window.addEventListener('resize', resize);
 
 renderModeEditor();
+initKnobs();
 setMaterial(controls.material.value);
 updateOutputs();
 resize();
